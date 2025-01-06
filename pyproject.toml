@@ -1,25 +1,18 @@
-[tool.poetry]
+[project]
 name = "leaudio"
 version = "0.1.0"
 description = "A LE Audio package"
-authors = ["Your Name <your.email@example.com>"]
-license = "MIT"
-readme = "README.md"
-homepage = "https://example.com"
-repository = "https://github.com/yourusername/leaudio"
-keywords = ["leaudio", "audio", "networking"]
-
-[tool.poetry.dependencies]
-python = "^3.8"
-# Add your dependencies here
-# Example:
-requests = "^2.25.1"
-asyncio = "^3.4.3"
-
-[tool.poetry.dev-dependencies]
-pytest = "^6.2.4"
-# Add your development dependencies here
+authors = [{name="Markus Jellitsch"}]
+requires-python = ">=3.8"
+dependencies = ["bumble>=0.0.202","scipy"]
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = "."
+
+
+[project.scripts]
+unicast_client = "leaudio.apps.bap_unicast_client:main"
