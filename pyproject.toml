@@ -12,7 +12,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-
+include = [".*" , "leaudio.apps*"]
+namespaces = true
 
 [project.scripts]
 unicast_client = "leaudio.apps.bap_unicast_client:main"
