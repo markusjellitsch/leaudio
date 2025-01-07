@@ -1,100 +1,100 @@
+"""
+BAP Unicast Client Class
+
+Created on 26. Dec. 2024
+
+@author: Markus Jellitsch
+"""
+
 from scipy import signal
 import numpy as np
 import argparse
 import json
+import serial as ser
 from bumble.profiles.bap import (
-
     AudioLocation,
-
     SamplingFrequency,
-
     FrameDuration,
-
     CodecSpecificConfiguration,
-
 )
 from bumble.profiles.ascs import (
-
     AudioStreamControlServiceProxy,
-
     ASE_Config_Codec,
-
     ASE_Config_QOS,
-
     ASE_Disable,
-
     ASE_Enable,
 
 )
 from bumble.hci import CodecID, CodingFormat
 from bumble.profiles.pacs import (
-
     PacRecord,
-
     PublishedAudioCapabilitiesServiceProxy,
-
 )
-from bumble.transport.common import StreamPacketSource
-from bumble.profiles import pacs
+from bumble.transport import serial
 from bumble.utils import AsyncRunner
-from bumble.transport import open_transport_or_link
-from bumble.device import Device, Peer, Advertisement, ConnectionParametersPreferences, Connection
-from bumble.core import ProtocolError, AdvertisingData
+from bumble.device import Device, Peer, ConnectionParametersPreferences, Connection
+from bumble.core import AdvertisingData
 from bumble.snoop import BtSnooper
 import functools
-from bumble.colors import color
 from bumble.profiles.ascs import AudioStreamControlServiceProxy
 from bumble.hci import HCI_IsoDataPacket, HCI_LE_1M_PHY, HCI_LE_2M_PHY
-from bumble import device
-from typing import Optional, List, cast
 import scipy.io.wavfile as wav
 import logging
-import sys
 from utils.le_audio_encoder import LeAudioEncoder
 import asyncio
-import sys
 import time
 import os
 from bumble import hci
 import sys
 
 
-app_specific_codec = CodecSpecificConfiguration( 
+app_specific_codec = CodecSpecificConfiguration(
     sampling_frequency=SamplingFrequency.FREQ_24000,
     frame_duration=FrameDuration.DURATION_10000_US,
-    audio_channel_allocation=AudioLocation.FRONT_RIGHT,    
+    audio_channel_allocation=AudioLocation.FRONT_RIGHT,
     octets_per_codec_frame=60,
     codec_frames_per_sdu=1,
 )
 
-
 TEST_SINE = 1
-
 
 complete_local_name = "BUMBLE"
 iso_packets = []
-
 upsampled_left_channel = None
+
+
+def clean_reset(com_port):
+    try:
+        with ser.Serial(com_port, baudrate=1000000, timeout=1) as s:
+            # Send the HCI_RESET command (0x03)
+            s.write(bytes(hci.HCI_Reset_Command()))
+            time.sleep(0.5)
+            s.write(bytes(hci.HCI_Reset_Command()))
+            print(f"HCI_RESET command sent to {com_port}")
+
+    except Exception as e:
+        print(f"Error opening or accessing {com_port}: {e}")
 
 
 def read_wav_file(filename):
 
     rate, data = wav.read(filename)
-
-    print("Bitdepth:", data.dtype.itemsize * 8)
-
-    print("Sample rate:", rate)
-
-    left_channel = data[:, 1]
-
-    print("Audio data (left):", left_channel)
-
+    num_channels = data.ndim
+        
+    if num_channels == 1:
+        left_channel = data[:]
+    else: 
+        left_channel = data[:, 1]
+   
     print(len(left_channel))
-    print(app_specific_codec.sampling_frequency.hz)
     upsampled_data = signal.resample(left_channel, int(
         app_specific_codec.sampling_frequency.hz / 41000 * left_channel.shape[0]))
 
-    #wav.write("upsampled_stereo_file.wav", app_specific_codec.sampling_frequency.hz, upsampled_data.astype(data.dtype))
+    # wav.write("upsampled_stereo_file.wav", app_specific_codec.sampling_frequency.hz, upsampled_data.astype(data.dtype))
+    print("Sample rate:", rate)
+    print("Number channels:", num_channels)
+    print("Audio data (left):", left_channel)
+    print("Bitdepth:", data.dtype.itemsize * 8)
 
     return upsampled_data.astype(np.int16)
 
@@ -107,7 +107,6 @@ def generate_sine_wave_iso_frames(frequency, sampling_rate, duration):
     sine_wave = np.sin(2 * np.pi * frequency * t)
 
     # Scale the sine wave to the 16-bit range (-32768 to 32767)
-
     scaled_sine_wave = sine_wave * 8191.5
 
     # Convert to 16-bit integer format
@@ -123,8 +122,6 @@ def generate_sine_wave_iso_frames(frequency, sampling_rate, duration):
 
     return iso_frame
 
-
-# -----------------------------------------------------------------------------
 
 class Listener(Device.Listener):
 
@@ -211,12 +208,12 @@ class Listener(Device.Listener):
         # discover services
         pacs_client = await peer.discover_service_and_create_proxy(PublishedAudioCapabilitiesServiceProxy)
         ascs_client = await peer.discover_service_and_create_proxy(AudioStreamControlServiceProxy)
-        
+
         # read sink PACs
         response = await pacs_client.sink_pac.read_value()
         pac_record = PacRecord.from_bytes(response[1:])
         print(pac_record)
-        
+
         # enable ASCS notifications
         await ascs_client.ase_control_point.subscribe()
         await ascs_client.sink_ase[0].subscribe(
@@ -236,10 +233,10 @@ class Listener(Device.Listener):
                 codec_id=[CodingFormat(CodecID.LC3)],
                 codec_specific_configuration=[app_specific_codec],
             )
-            
-            
+
+
         )
-        
+
         # wait for notification
         await notifications[1].get()
         print("ASE: codec configured")
@@ -248,7 +245,8 @@ class Listener(Device.Listener):
         cis_handles = await self.device.setup_cig(
             cig_id=1,
             cis_id=[1],
-            sdu_interval=(app_specific_codec.frame_duration.us, app_specific_codec.frame_duration.us),
+            sdu_interval=(app_specific_codec.frame_duration.us,
+                          app_specific_codec.frame_duration.us),
             framing=0,
             max_sdu=(app_specific_codec.octets_per_codec_frame, 0),
             retransmission_number=15,
@@ -313,7 +311,7 @@ class Listener(Device.Listener):
         print('ASE: audio stream enabled')
 
         # prepere the ISO packets
-        self.packet_sequence_number = 0 
+        self.packet_sequence_number = 0
         self.iso_packet = HCI_IsoDataPacket(
             connection_handle=cis_handles[0],
             data_total_length=app_specific_codec.octets_per_codec_frame + 4,
@@ -321,12 +319,14 @@ class Listener(Device.Listener):
             pb_flag=0b10,
             packet_status_flag=0,
             iso_sdu_length=app_specific_codec.octets_per_codec_frame,
-            iso_sdu_fragment=bytes([0]*app_specific_codec.octets_per_codec_frame),
+            iso_sdu_fragment=bytes(
+                [0]*app_specific_codec.octets_per_codec_frame),
         )
 
         self.send_complete = False
+
         def on_iso_pdu_sent(event):
-            if self.packet_sequence_number < len(iso_packets) - 1: 
+            if self.packet_sequence_number < len(iso_packets) - 1:
                 # send the next ISO packet
                 self.packet_sequence_number += 1
                 self.iso_packet.packet_sequence_number = self.packet_sequence_number
@@ -346,10 +346,8 @@ class Listener(Device.Listener):
                 self.device.future.set_result(None)
                 break
 
-# -----------------------------------------------------------------------------
 
-
-async def main() -> None:
+async def client() -> None:
     global complete_local_name
     parser = argparse.ArgumentParser(
         description="A simple example of argparse")
@@ -367,7 +365,6 @@ async def main() -> None:
                         help="target complete local name of the peer")
     parser.add_argument("--verbose", "-v", action="count", default=0)
     args = parser.parse_args()
-
 
     if args.verbose > 0:
         logging.basicConfig(level=logging.DEBUG)
@@ -390,11 +387,11 @@ async def main() -> None:
         app_specific_codec.octets_per_codec_frame = 120
     else:
         raise ValueError("unknown sample rate")
-    
+
     dev_config = args.config
     if not dev_config or dev_config == "":
         # Define the data as a Python dictionary
-        config_data = {    
+        config_data = {
             "name": "Unicast Client",
             "address": "C0:98:E5:49:00:00"
         }
@@ -402,90 +399,90 @@ async def main() -> None:
         # Write the data to a JSON file
         dev_config = "device.json"
         with open(dev_config, "w") as outfile:
-            json.dump(config_data, outfile, indent=4)  # Indent for better readability
+            # Indent for better readability
+            json.dump(config_data, outfile, indent=4)
 
     print(f"sample rate: {app_specific_codec.sampling_frequency.hz} Hz")
     print(f"frame duration: {app_specific_codec.frame_duration.us}  us")
-    print(f"octets per codec frame: {app_specific_codec.octets_per_codec_frame} bytes")  
+    print(f"octets per codec frame: {app_specific_codec.octets_per_codec_frame} bytes")
 
-    async with await open_transport_or_link(args.port) as hci_transport:
+    if args.wave:
+        sound_file = args.wave
+        TEST_SINE = 0
+    else:
+        TEST_SINE = 1
+        print("Test Sine is used")
 
-        # Create a device to manage the host, with a custom listener
-        device = Device.from_config_file_with_hci(
-            dev_config, hci_transport.source, hci_transport.sink
-        )
+    if args.target_name:
+        complete_local_name = args.target_name
+        print(f"Target: {complete_local_name}")
 
-        # Connect to
-        if args.target_name:
-            complete_local_name = args.target_name
+    # clean controller reset
+    clean_reset(args.port)
 
-        device.listener = Listener(device)
-        device.cis_enabled = True
+    # open the transport
+    hci_transport = await serial.open_serial_transport(args.port)
 
-        f = open("log.btsnoop", "wb")
+    # create a device to manage the host, with a custom listener
+    device = Device.from_config_file_with_hci(
+        dev_config, hci_transport.source, hci_transport.sink
+    )
 
-        Snooper = BtSnooper(f)
+    device.listener = Listener(device)
+    device.cis_enabled = True
 
-        device.host.snooper = Snooper
+    # create snoop file
+    f = open("log.btsnoop", "wb")
+    Snooper = BtSnooper(f)
+    device.host.snooper = Snooper
 
-        if args.wave:
-            sound_file = args.wave
-            TEST_SINE = 0
+    # setup the LC3 encoder
+    encoder = LeAudioEncoder()
+    encoder.setup_encoders(
+        app_specific_codec.sampling_frequency.hz,
+        app_specific_codec.frame_duration.us,
+        1,
+    )
+
+    num_runs = 0
+
+    # prepare the samples
+    # calculate the number of samples per frame duration.
+    sample_size = int(app_specific_codec.sampling_frequency.hz *
+                      app_specific_codec.frame_duration.us / 1000 / 1000)
+    if TEST_SINE == 0:
+        if os.path.isfile(sound_file):
+            upsampled_left_channel = read_wav_file(sound_file)
         else:
-            TEST_SINE = 1
+            raise FileNotFoundError(f"The file {sound_file} does not exist.")
 
-        await device.power_on()
-        encoder = LeAudioEncoder()
-        encoder.setup_encoders(
-            app_specific_codec.sampling_frequency.hz,
-            app_specific_codec.frame_duration.us,
-            1,
-        )
+        num_runs = len(upsampled_left_channel) // sample_size
+    else:
+        num_runs = 2000
 
-        # prepare the samples
-        num_runs = 0
-        # calculate the number of samples per frame duration.
-        sample_size = int(app_specific_codec.sampling_frequency.hz  * app_specific_codec.frame_duration.us / 1000 / 1000)
+    for i in range(num_runs):
+
         if TEST_SINE == 0:
-
-            if os.path.isfile(sound_file):
-                upsampled_left_channel = read_wav_file(sound_file)
-            else:
-                raise FileNotFoundError(f"The file {sound_file} does not exist.")
-
-            num_runs = len(upsampled_left_channel) // sample_size
-
+            pcm_data = upsampled_left_channel[i *
+                                              sample_size:i*sample_size+sample_size]
         else:
+            pcm_data = generate_sine_wave_iso_frames(
+                1000, app_specific_codec.sampling_frequency.hz, app_specific_codec.frame_duration.us / 1000000)
 
-            num_runs = 2000
+        data = encoder.encode(
+            app_specific_codec.octets_per_codec_frame, 1, 1, bytes(pcm_data))
+        iso_packets.append(data)
+    print("encoding finished. num_iso_packets:", len(iso_packets))
 
+    print("power on ...")
+    await device.power_on()
 
-        print("sample size", sample_size)
-        for i in range(num_runs):
+    print(f'start scanning ...')
+    await device.start_scanning(scanning_phys=[HCI_LE_1M_PHY], legacy=False)
 
-            if TEST_SINE == 0:
-              
-                pcm_data = upsampled_left_channel[i *sample_size:i*sample_size+sample_size]
+    device.future = asyncio.get_running_loop().create_future()
+    await device.future
+    print("all done")
 
-            else:
-
-                pcm_data = generate_sine_wave_iso_frames(
-                    1000, app_specific_codec.sampling_frequency.hz, app_specific_codec.frame_duration.us / 1000000)
-
-            data = encoder.encode(app_specific_codec.octets_per_codec_frame, 1, 1, bytes(pcm_data))
-            iso_packets.append(data)
-
-        print("finished with encoding", len(iso_packets))
-
-        print(f'start scanning for  {complete_local_name}...')
-        await device.start_scanning(scanning_phys=[HCI_LE_1M_PHY], legacy=False)
-        
-        device.future = asyncio.get_running_loop().create_future()
-        await device.future 
-        print("done")
-
-
-# -----------------------------------------------------------------------------
-
-
-asyncio.run(main())
+def main():
+    asyncio.run(client())
