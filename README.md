@@ -6,7 +6,8 @@ A HCI enabled BLE controller (e.g. nRF53 with hci_uart.hex) is required.
 
 # Install
 ```
-[git clone ](https://github.com/markusjellitsch/leaudio.git)
+
+git clone https://github.com/markusjellitsch/leaudio.git
 cd leaudio
 pip install -e .
 ```
