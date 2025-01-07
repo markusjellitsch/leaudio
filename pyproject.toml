@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "A LE Audio package"
 authors = [{name="Markus Jellitsch"}]
 requires-python = ">=3.8"
-dependencies = ["bumble>=0.0.202","scipy"]
+dependencies = ["bumble  @ git+https://github.com/markusjellitsch/bumble.git@iso-packet-sent-evt","scipy","wasmtime","pyserial-asyncio @ git+https://github.com/hugh-manning/pyserial-asyncio.git@windows-proactor"]
+
 
 [build-system]
 requires = ["setuptools"]
@@ -12,8 +13,13 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = [".*" , "leaudio.apps*"]
+include = ["leaudio" , "apps", "utils*"]
 namespaces = true
+
+[tool.setuptools.package-dir]
+"leaudio" = "."
+"leaudio.apps" = "apps"
+
 
 [project.scripts]
 unicast_client = "leaudio.apps.bap_unicast_client:main"

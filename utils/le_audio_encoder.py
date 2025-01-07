@@ -3,7 +3,7 @@ import wasmtime
 import ctypes
 from typing import List, cast
 import wasmtime.loader
-import liblc3  # type: ignore
+import utils.liblc3 as liblc3 # type: ignore
 import enum
 
 store = wasmtime.loader.store

@@ -49,8 +49,7 @@ from typing import Optional, List, cast
 import scipy.io.wavfile as wav
 import logging
 import sys
-sys.path.append('../utils') 
-from le_audio_encoder import LeAudioEncoder
+from utils.le_audio_encoder import LeAudioEncoder
 import asyncio
 import sys
 import time
@@ -71,7 +70,7 @@ app_specific_codec = CodecSpecificConfiguration(
 TEST_SINE = 1
 
 
-complete_local_name = "BLE_COVER"
+complete_local_name = "BUMBLE"
 iso_packets = []
 
 upsampled_left_channel = None
@@ -94,7 +93,7 @@ def read_wav_file(filename):
     upsampled_data = signal.resample(left_channel, int(
         app_specific_codec.sampling_frequency.hz / 41000 * left_channel.shape[0]))
 
-    wav.write("upsampled_stereo_file.wav", app_specific_codec.sampling_frequency.hz, upsampled_data.astype(data.dtype))
+    #wav.write("upsampled_stereo_file.wav", app_specific_codec.sampling_frequency.hz, upsampled_data.astype(data.dtype))
 
     return upsampled_data.astype(np.int16)
 
@@ -280,6 +279,7 @@ class Listener(Device.Listener):
         await ascs_client.ase_control_point.write_value(
             ASE_Enable(
                 ase_id=[1],
+                # neeeded?
                 metadata=[bytes([0x03, 0x02, 0x01, 0x00])],
             )
         )
