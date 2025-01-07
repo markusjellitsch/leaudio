@@ -1,6 +1,7 @@
 from scipy import signal
 import numpy as np
 import argparse
+import json
 from bumble.profiles.bap import (
 
     AudioLocation,
@@ -353,7 +354,7 @@ async def main() -> None:
     parser = argparse.ArgumentParser(
         description="A simple example of argparse")
     parser.add_argument("-c", "--config", type=str,
-                        default="device.json", help="device config file")
+                        default="", help="device config file")
     parser.add_argument(
         "-p", "--port", help="com port (e.g. serial:/dev/ttyUSB0)")
     parser.add_argument("-s", "--sample_rate", type=int,
@@ -389,6 +390,19 @@ async def main() -> None:
         app_specific_codec.octets_per_codec_frame = 120
     else:
         raise ValueError("unknown sample rate")
+    
+    dev_config = args.config
+    if not dev_config or dev_config == "":
+        # Define the data as a Python dictionary
+        config_data = {    
+            "name": "Unicast Client",
+            "address": "C0:98:E5:49:00:00"
+        }
+
+        # Write the data to a JSON file
+        dev_config = "device.json"
+        with open(dev_config, "w") as outfile:
+            json.dump(config_data, outfile, indent=4)  # Indent for better readability
 
     print(f"sample rate: {app_specific_codec.sampling_frequency.hz} Hz")
     print(f"frame duration: {app_specific_codec.frame_duration.us}  us")
@@ -398,7 +412,7 @@ async def main() -> None:
 
         # Create a device to manage the host, with a custom listener
         device = Device.from_config_file_with_hci(
-            args.config, hci_transport.source, hci_transport.sink
+            dev_config, hci_transport.source, hci_transport.sink
         )
 
         # Connect to
