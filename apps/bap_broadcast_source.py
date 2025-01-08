@@ -885,6 +885,8 @@ async def run_broadcast(
             global iso_index
             big.bis_links[0].write(frames[iso_index])
             iso_index +=1
+            if iso_index == len(frames): 
+                iso_index = 0
 
 
         device.host.on('packet_complete',on_iso_pdu_sent)
