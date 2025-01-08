@@ -33,7 +33,7 @@ import pyee
 
 import sys
 sys.path.append('../utils') 
-from le_audio_encoder import LeAudioEncoder
+from utils.le_audio_encoder import LeAudioEncoder
 
 from bumble.colors import color
 from bumble import company_ids
@@ -887,7 +887,8 @@ async def run_broadcast(
             iso_index +=1
 
 
-        device.host.on('iso_packet_sent',on_iso_pdu_sent)
+        device.host.on('packet_complete',on_iso_pdu_sent)
+        print('Start sending frames')
         while True:
             await asyncio.sleep(1)
 

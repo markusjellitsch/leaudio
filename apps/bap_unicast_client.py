@@ -335,7 +335,7 @@ class Listener(Device.Listener):
             else:
                 self.send_complete = True
 
-        self.device.host.on('iso_packet_sent', on_iso_pdu_sent)
+        self.device.host.on('packet_complete', on_iso_pdu_sent)
         self.device.host.send_hci_packet(self.iso_packet)
 
         while True:
