@@ -16,7 +16,7 @@ pip install -e .
 run an client application for example the LE Audio Unicast Client:
 
 ```
-unicast_client -p serial:COMXY -w path/to/wav/file/your_wav.wav -t COMPLETE_LOCAL_NAME 
+unicast_client -p COMXY -w path/to/wav/file/your_wav.wav -t COMPLETE_LOCAL_NAME 
 ```
 
 NOTE: You can use sound examples located in leaudio/sounds
