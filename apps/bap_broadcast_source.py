@@ -26,7 +26,8 @@ import os
 import wave
 import itertools
 from typing import cast, Any, AsyncGenerator, Coroutine, Dict, Optional, Tuple
-
+from scipy import signal
+import scipy.io.wavfile as wav
 import click
 import numpy as np
 import pyee
@@ -746,50 +747,74 @@ async def run_receive(
         await terminated.wait()
 
 
+def read_wav_file(filename):
+    rate, data = wav.read(filename)
+    num_channels = data.ndim
+        
+    if num_channels == 1:
+        left_channel = data[:]
+    else: 
+        left_channel = data[:, 1]
+   
+    print(len(left_channel))
+    upsampled_data = signal.resample(left_channel, int(
+        48000 / 41000 * left_channel.shape[0]))
+
+    # wav.write("upsampled_stereo_file.wav", app_specific_codec.sampling_frequency.hz, upsampled_data.astype(data.dtype))
+    print("Sample rate:", rate)
+    print("Number channels:", num_channels)
+    print("Audio data (left):", left_channel)
+    print("Bitdepth:", data.dtype.itemsize * 8)
+
+    return upsampled_data.astype(np.int16)
+
+
+
 async def run_broadcast(
     transport: str, broadcast_id: int, broadcast_code: str | None, wav_file_path: str
 ) -> None:
     
+    TEST_SINE = 0
     encoder = LeAudioEncoder()
     async with create_device(transport) as device:
         if not device.supports_le_periodic_advertising:
             print(color('Periodic advertising not supported', 'red'))
             return
 
-        with wave.open(wav_file_path, 'rb') as wav:
-            print('Encoding wav file into lc3...')
+        # encoder = lc3.Encoder(
+        #     frame_duration_us=10000,
+        #     sample_rate_hz=48000,
+        #     num_channels=2,
+        #     input_sample_rate_hz=wav.getframerate(),
+        # )
 
-            # encoder = lc3.Encoder(
-            #     frame_duration_us=10000,
-            #     sample_rate_hz=48000,
-            #     num_channels=2,
-            #     input_sample_rate_hz=wav.getframerate(),
-            # )
+        # create snoop file
+        f = open("log.btsnoop", "wb")
+        Snooper = BtSnooper(f)
+        device.host.snooper = Snooper
+        encoder.setup_encoders(48000,10000,1)
+        frames = list[bytes]()
+        sine = generate_sine_wave_iso_frames(1000,48000,0.01)
+        print(len(sine))
 
-            # create snoop file
-            f = open("log.btsnoop", "wb")
-            Snooper = BtSnooper(f)
-            device.host.snooper = Snooper
-            encoder.setup_encoders(48000,10000,1)
-            frames = list[bytes]()
-            sine = generate_sine_wave_iso_frames(1000,48000,0.01)
-            print(len(sine))
+        sample_size = 480
+        print(wav_file_path)
+        upsampled_left_channel = read_wav_file(wav_file_path)
+        num_runs = len(upsampled_left_channel) // sample_size
+        TEST_SINE = 0
+        for i in range(num_runs):
 
-            # frame_size = encoder.get_frame_samples()
-            # print("Frame_size:",frame_size)
-            # while pcm := wav.readframes(480):
-            #     iso =  encoder.encode(100,1,0,pcm)
-            #     frames.append(iso
-                   
-            #         #encoder.encode(pcm, num_bytes=200, bit_depth=wav.getsampwidth() * 8)
-            #     )
-
-            for i in range(2000):
+            if TEST_SINE == 0:
+                pcm = upsampled_left_channel[i *
+                                            sample_size:i*sample_size+sample_size]
+                iso =  encoder.encode(100,1,1,bytes(pcm))
+            else:
                 iso =  encoder.encode(100,1,1,sine)
-                frames.append(iso)
-
-            del encoder
-            print('Encoding complete.')
+            
+            frames.append(iso)
+        
+        del encoder
+        print('Encoding complete.')
 
         basic_audio_announcement = bap.BasicAudioAnnouncement(
             presentation_delay=40000,
@@ -816,12 +841,6 @@ async def run_broadcast(
                             index=1,
                             codec_specific_configuration=bap.CodecSpecificConfiguration(
                                 audio_channel_allocation=bap.AudioLocation.FRONT_LEFT
-                            ),
-                        ),
-                        bap.BasicAudioAnnouncement.BIS(
-                            index=2,
-                            codec_specific_configuration=bap.CodecSpecificConfiguration(
-                                audio_channel_allocation=bap.AudioLocation.FRONT_RIGHT
                             ),
                         ),
                     ],
@@ -882,7 +901,9 @@ async def run_broadcast(
         #big.bis_links[1].write(dummy_frame)
 
         def on_iso_pdu_sent(event):
+
             global iso_index
+            print('ISO PDU sent')
             big.bis_links[0].write(frames[iso_index])
             iso_index +=1
             if iso_index == len(frames): 
@@ -1042,3 +1063,10 @@ def main():
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     main()  # pylint: disable=no-value-for-parameter
+
+
+# NOTES for the IOT747
+# Baudrate is 9600
+# open F0F1F2F3F4F5 BROAD 2 0 1e40
+# MUSIC 91 PLAY
+
