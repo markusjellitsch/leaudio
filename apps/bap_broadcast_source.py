@@ -33,8 +33,7 @@ import numpy as np
 import pyee
 
 import sys
-sys.path.append('../utils') 
-from utils.le_audio_encoder import LeAudioEncoder
+from leaudio import LeAudioEncoder
 
 from bumble.colors import color
 from bumble import company_ids
@@ -48,6 +47,8 @@ from bumble.profiles import bass
 import bumble.device
 import bumble.transport
 import bumble.utils
+
+from leaudio import read_wav_file, generate_sine_data
 
 
 # -----------------------------------------------------------------------------
@@ -64,30 +65,6 @@ AURACAST_DEFAULT_DEVICE_ADDRESS = hci.Address('F0:F1:F2:F3:F4:F5')
 AURACAST_DEFAULT_SYNC_TIMEOUT = 5.0
 AURACAST_DEFAULT_ATT_MTU = 256
 iso_index:int = 0
-
-
-def generate_sine_wave_iso_frames(frequency, sampling_rate, duration):
-    num_samples = int(sampling_rate * duration)
-
-    t = np.linspace(0, duration, num_samples, False)
-
-    sine_wave = np.sin(2 * np.pi * frequency * t)
-
-    # Scale the sine wave to the 16-bit range (-32768 to 32767)
-    scaled_sine_wave = sine_wave * 8191.5
-
-    # Convert to 16-bit integer format
-    int16_sine_wave = scaled_sine_wave.astype(np.int16)
-
-    iso_frame = bytearray()
-
-    for num in int16_sine_wave:
-
-        iso_frame.append(num & 0xFF)  # Extract lower 8 bits
-
-        iso_frame.append((num >> 8) & 0xFF)  # Extract upper 8 bit
-
-    return iso_frame
 
 
 # -----------------------------------------------------------------------------
@@ -747,29 +724,6 @@ async def run_receive(
         await terminated.wait()
 
 
-def read_wav_file(filename):
-    rate, data = wav.read(filename)
-    num_channels = data.ndim
-        
-    if num_channels == 1:
-        left_channel = data[:]
-    else: 
-        left_channel = data[:, 1]
-   
-    print(len(left_channel))
-    upsampled_data = signal.resample(left_channel, int(
-        48000 / 41000 * left_channel.shape[0]))
-
-    # wav.write("upsampled_stereo_file.wav", app_specific_codec.sampling_frequency.hz, upsampled_data.astype(data.dtype))
-    print("Sample rate:", rate)
-    print("Number channels:", num_channels)
-    print("Audio data (left):", left_channel)
-    print("Bitdepth:", data.dtype.itemsize * 8)
-
-    return upsampled_data.astype(np.int16)
-
-
-
 async def run_broadcast(
     transport: str, broadcast_id: int, broadcast_code: str | None, wav_file_path: str
 ) -> None:
@@ -781,25 +735,18 @@ async def run_broadcast(
             print(color('Periodic advertising not supported', 'red'))
             return
 
-        # encoder = lc3.Encoder(
-        #     frame_duration_us=10000,
-        #     sample_rate_hz=48000,
-        #     num_channels=2,
-        #     input_sample_rate_hz=wav.getframerate(),
-        # )
-
         # create snoop file
         f = open("log.btsnoop", "wb")
         Snooper = BtSnooper(f)
         device.host.snooper = Snooper
         encoder.setup_encoders(48000,10000,1)
         frames = list[bytes]()
-        sine = generate_sine_wave_iso_frames(1000,48000,0.01)
+        sine = generate_sine_data(1000,48000,0.01)
         print(len(sine))
 
         sample_size = 480
         print(wav_file_path)
-        upsampled_left_channel = read_wav_file(wav_file_path)
+        upsampled_left_channel = read_wav_file(wav_file_path,48000)
         num_runs = len(upsampled_left_channel) // sample_size
         TEST_SINE = 0
         for i in range(num_runs):
@@ -935,102 +882,12 @@ def run_async(async_command: Coroutine) -> None:
 # -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
-@click.group()
-@click.pass_context
-def auracast(ctx):
-    ctx.ensure_object(dict)
 
-
-@auracast.command('scan')
+@click.command()
+@click.option('transport','-p', type=str)
+@click.option('wav_file_path','-w' , type=str)
 @click.option(
-    '--filter-duplicates', is_flag=True, default=False, help='Filter duplicates'
-)
-@click.option(
-    '--sync-timeout',
-    metavar='SYNC_TIMEOUT',
-    type=float,
-    default=AURACAST_DEFAULT_SYNC_TIMEOUT,
-    help='Sync timeout (in seconds)',
-)
-@click.argument('transport')
-@click.pass_context
-def scan(ctx, filter_duplicates, sync_timeout, transport):
-    """Scan for public broadcasts"""
-    run_async(run_scan(filter_duplicates, sync_timeout, transport))
-
-
-@auracast.command('assist')
-@click.option(
-    '--broadcast-name',
-    metavar='BROADCAST_NAME',
-    help='Broadcast Name to tune to',
-)
-@click.option(
-    '--source-id',
-    metavar='SOURCE_ID',
-    type=int,
-    help='Source ID (for remove-source command)',
-)
-@click.option(
-    '--command',
-    type=click.Choice(
-        ['monitor-state', 'add-source', 'modify-source', 'remove-source']
-    ),
-    required=True,
-)
-@click.argument('transport')
-@click.argument('address')
-@click.pass_context
-def assist(ctx, broadcast_name, source_id, command, transport, address):
-    """Scan for broadcasts on behalf of a audio server"""
-    run_async(run_assist(broadcast_name, source_id, command, transport, address))
-
-
-@auracast.command('pair')
-@click.argument('transport')
-@click.argument('address')
-@click.pass_context
-def pair(ctx, transport, address):
-    """Pair with an audio server"""
-    run_async(run_pair(transport, address))
-
-
-@auracast.command('receive')
-@click.argument('transport')
-@click.argument('broadcast_id', type=int)
-@click.option(
-    '--broadcast-code',
-    metavar='BROADCAST_CODE',
-    type=str,
-    help='Broadcast encryption code in hex format',
-)
-@click.option(
-    '--sync-timeout',
-    metavar='SYNC_TIMEOUT',
-    type=float,
-    default=AURACAST_DEFAULT_SYNC_TIMEOUT,
-    help='Sync timeout (in seconds)',
-)
-@click.option(
-    '--subgroup',
-    metavar='SUBGROUP',
-    type=int,
-    default=0,
-    help='Index of Subgroup',
-)
-@click.pass_context
-def receive(ctx, transport, broadcast_id, broadcast_code, sync_timeout, subgroup):
-    """Receive a broadcast source"""
-    run_async(
-        run_receive(transport, broadcast_id, broadcast_code, sync_timeout, subgroup)
-    )
-
-
-@auracast.command('broadcast')
-@click.argument('transport')
-@click.argument('wav_file_path', type=str)
-@click.option(
-    '--broadcast-id',
+    '--broadcast_id',
     metavar='BROADCAST_ID',
     type=int,
     default=123456,
@@ -1042,9 +899,10 @@ def receive(ctx, transport, broadcast_id, broadcast_code, sync_timeout, subgroup
     type=str,
     help='Broadcast encryption code in hex format',
 )
-@click.pass_context
-def broadcast(ctx, transport, broadcast_id, broadcast_code, wav_file_path):
+
+def broadcast(transport, broadcast_id, broadcast_code, wav_file_path):
     """Start a broadcast as a source."""
+    #ctx.ensure_object(dict)
     run_async(
         run_broadcast(
             transport=transport,
@@ -1056,8 +914,9 @@ def broadcast(ctx, transport, broadcast_id, broadcast_code, wav_file_path):
 
 
 def main():
+    
     logging.basicConfig(level=os.environ.get('BUMBLE_LOGLEVEL', 'ERROR').upper())
-    auracast()
+    broadcast()
 
 
 # -----------------------------------------------------------------------------
@@ -1065,8 +924,9 @@ if __name__ == "__main__":
     main()  # pylint: disable=no-value-for-parameter
 
 
-# NOTES for the IOT747
-# Baudrate is 9600
+# ####### NOTES for the IOT747
+# Set Baudrate to 9600
+# SCAN 2 OFF 2
 # open F0F1F2F3F4F5 BROAD 2 0 1e40
 # MUSIC 91 PLAY
 

@@ -8,19 +8,21 @@ dependencies = ["bumble  @ git+https://github.com/markusjellitsch/bumble.git@iso
 
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61", "wheel", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["leaudio" , "apps", "utils*"]
-namespaces = true
-
-[tool.setuptools.package-dir]
-"leaudio" = "."
-"leaudio.apps" = "apps"
 
 
 [project.scripts]
 unicast_client = "leaudio.apps.bap_unicast_client:main"
 broadcast_source = "leaudio.apps.bap_broadcast_source:main"
+
+[tool.setuptools]
+packages = [
+    "leaudio",
+    "leaudio.apps"
+]
+
+[tool.setuptools.package-dir]
+"leaudio" = "leaudio"
+"leaudio.apps" = "apps"

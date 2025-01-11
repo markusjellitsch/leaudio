@@ -38,14 +38,16 @@ from bumble.snoop import BtSnooper
 import functools
 from bumble.profiles.ascs import AudioStreamControlServiceProxy
 from bumble.hci import HCI_IsoDataPacket, HCI_LE_1M_PHY, HCI_LE_2M_PHY
-import scipy.io.wavfile as wav
+
 import logging
-from utils.le_audio_encoder import LeAudioEncoder
+from leaudio import LeAudioEncoder
 import asyncio
 import time
 import os
 from bumble import hci
 import sys
+
+from leaudio import generate_sine_data, read_wav_file
 
 
 app_specific_codec = CodecSpecificConfiguration(
@@ -76,51 +78,8 @@ def clean_reset(com_port):
         print(f"Error opening or accessing {com_port}: {e}")
 
 
-def read_wav_file(filename):
-
-    rate, data = wav.read(filename)
-    num_channels = data.ndim
-        
-    if num_channels == 1:
-        left_channel = data[:]
-    else: 
-        left_channel = data[:, 1]
-   
-    print(len(left_channel))
-    upsampled_data = signal.resample(left_channel, int(
-        app_specific_codec.sampling_frequency.hz / 41000 * left_channel.shape[0]))
-
-    # wav.write("upsampled_stereo_file.wav", app_specific_codec.sampling_frequency.hz, upsampled_data.astype(data.dtype))
-    print("Sample rate:", rate)
-    print("Number channels:", num_channels)
-    print("Audio data (left):", left_channel)
-    print("Bitdepth:", data.dtype.itemsize * 8)
-
-    return upsampled_data.astype(np.int16)
 
 
-def generate_sine_wave_iso_frames(frequency, sampling_rate, duration):
-    num_samples = int(sampling_rate * duration)
-
-    t = np.linspace(0, duration, num_samples, False)
-
-    sine_wave = np.sin(2 * np.pi * frequency * t)
-
-    # Scale the sine wave to the 16-bit range (-32768 to 32767)
-    scaled_sine_wave = sine_wave * 8191.5
-
-    # Convert to 16-bit integer format
-    int16_sine_wave = scaled_sine_wave.astype(np.int16)
-
-    iso_frame = bytearray()
-
-    for num in int16_sine_wave:
-
-        iso_frame.append(num & 0xFF)  # Extract lower 8 bits
-
-        iso_frame.append((num >> 8) & 0xFF)  # Extract upper 8 bit
-
-    return iso_frame
 
 
 class Listener(Device.Listener):
@@ -452,7 +411,7 @@ async def client() -> None:
                       app_specific_codec.frame_duration.us / 1000 / 1000)
     if TEST_SINE == 0:
         if os.path.isfile(sound_file):
-            upsampled_left_channel = read_wav_file(sound_file)
+            upsampled_left_channel = read_wav_file(sound_file,app_specific_codec.sampling_frequency.hz)
         else:
             raise FileNotFoundError(f"The file {sound_file} does not exist.")
 
@@ -466,7 +425,7 @@ async def client() -> None:
             pcm_data = upsampled_left_channel[i *
                                               sample_size:i*sample_size+sample_size]
         else:
-            pcm_data = generate_sine_wave_iso_frames(
+            pcm_data = generate_sine_data(
                 1000, app_specific_codec.sampling_frequency.hz, app_specific_codec.frame_duration.us / 1000000)
 
         data = encoder.encode(
