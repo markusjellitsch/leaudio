@@ -277,8 +277,21 @@ def run_async(async_command: Coroutine) -> None:
     type=str,
     help='Broadcast encryption code in hex format',
 )
-def broadcast(port, broadcast_id, broadcast_code, wav):
+@click.option(
+    '--verbose',
+    '-v',
+    is_flag=True,
+    default=False,
+    help='Enable verbose logging',
+)
+def broadcast(port, broadcast_id, broadcast_code, wav,verbose):
     """Start a broadcast as a source."""
+    if verbose > 0:
+        logging.basicConfig(level=os.environ.get(
+        'BUMBLE_LOGLEVEL', 'DEBUG').upper())
+    else:
+        logging.basicConfig(level=os.environ.get(
+        'BUMBLE_LOGLEVEL', 'ERROR').upper())
     # ctx.ensure_object(dict)
     run_async(
         run_broadcast(
@@ -291,9 +304,6 @@ def broadcast(port, broadcast_id, broadcast_code, wav):
 
 
 def main():
-
-    logging.basicConfig(level=os.environ.get(
-        'BUMBLE_LOGLEVEL', 'ERROR').upper())
     broadcast()
 
 
