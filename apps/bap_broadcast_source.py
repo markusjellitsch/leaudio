@@ -1,5 +1,6 @@
 """
 BAP Broadcast Source Application
+(based on Googe Bumble's Auracast example)
 
 Created on 26. Dec. 2024
 
