@@ -1,5 +1,5 @@
 """
-BAP Unicast Client Class
+BAP Unicast Client Application
 
 Created on 26. Dec. 2024
 
