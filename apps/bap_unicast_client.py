@@ -1,5 +1,5 @@
 """
-BAP Unicast Client Application
+BAP Unicast Client Class
 
 Created on 26. Dec. 2024
 
@@ -480,4 +480,9 @@ async def run_unicast(port,wav,target_name,sample_rate,verbose) -> None:
     print("all done")
 
 def main():
-    asyncio.run(unicast())
+    unicast()
+
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    main()  # pylint: disable=no-value-for-parameter
+
