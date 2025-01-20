@@ -16,6 +16,7 @@ build-backend = "setuptools.build_meta"
 [project.scripts]
 unicast_client = "leaudio.apps.bap_unicast_client:main"
 broadcast_source = "leaudio.apps.bap_broadcast_source:main"
+broadcast_assistant = "leaudio.apps.bap_broadcast_assistant:main"
 
 [tool.setuptools]
 packages = [
