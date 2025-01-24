@@ -26,24 +26,15 @@ def read_wav_file(filename,target_sample_rate):
 
 
 def generate_sine_data(frequency, sampling_rate, duration):
-    num_samples = int(sampling_rate * duration)
 
-    t = np.linspace(0, duration, num_samples, False)
+
+    t = np.arange(0, duration, 1/sampling_rate)
 
     sine_wave = np.sin(2 * np.pi * frequency * t)
+    wav.write("sine.wav", sampling_rate, sine_wave.astype(np.int16))
 
     # Scale the sine wave to the 16-bit range (-32768 to 32767)
     scaled_sine_wave = sine_wave * 8191.5
 
     # Convert to 16-bit integer format
-    int16_sine_wave = scaled_sine_wave.astype(np.int16)
-
-    iso_frame = bytearray()
-
-    for num in int16_sine_wave:
-
-        iso_frame.append(num & 0xFF)  # Extract lower 8 bits
-
-        iso_frame.append((num >> 8) & 0xFF)  # Extract upper 8 bit
-
-    return iso_frame
+    return scaled_sine_wave.astype(np.int16)
