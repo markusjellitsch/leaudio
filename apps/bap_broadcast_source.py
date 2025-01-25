@@ -386,7 +386,7 @@ async def run_broadcast(
             )
             await broacast_source.wait_for_streaming(10)
             if not repeat:
-                await broacast_source.wait_for_complete(frame_num/100 + 10)
+                await broacast_source.wait_for_complete(frame_num / 100 + 10)
                 logging.info("Streaming complete")
             else:
                 logger.info("Streaming in repeat mode.Manual stop required")
@@ -487,7 +487,8 @@ def run_async(async_command: Coroutine) -> None:
     default=False,
     help="Enable verbose logging",
 )
-def broadcast(
+
+def main(
     port,
     broadcast_id,
     broadcast_code,
@@ -513,10 +514,6 @@ def broadcast(
             verbose=verbose,
         )
     )
-
-
-def main():
-    broadcast()
 
 
 # -----------------------------------------------------------------------------
