@@ -33,6 +33,7 @@ import asyncio
 
 class BapConnector(Device.Listener):
     dflt_target_name = "BUMBLE SINK"
+    dflt_mtu_size = 1691
 
     def __init__(self, device):
         # additional device attributes
@@ -100,7 +101,7 @@ class BapConnector(Device.Listener):
                     )
 
     @AsyncRunner.run_in_task()
-    async def on_connection_complete(self, connection: Connection):
+    async def on_connection(self, connection: Connection):
         """
         This method is called when a connection is established to the target device.
 
@@ -109,7 +110,6 @@ class BapConnector(Device.Listener):
         Args:
             connection: The established connection.
         """
-        logging.info(f"connection established => address: {connection.peer_address}")
         await self._on_connection(connection)
 
     async def _on_connection(self, connection: Connection):
@@ -132,7 +132,7 @@ class BapConnector(Device.Listener):
         await connection.set_phy(rx_phys=[HCI_LE_2M_PHY], tx_phys=[HCI_LE_2M_PHY])
         logging.info("PHY updated")
 
-        await self.peer.request_mtu(1691)
+        await self.peer.request_mtu(self.dflt_mtu_size)
         logging.info("MTU requested")
 
         self.pacs_client = await self.peer.discover_service_and_create_proxy(
@@ -145,6 +145,8 @@ class BapConnector(Device.Listener):
         self.bass_client = await self.peer.discover_service_and_create_proxy(
             BroadcastAudioScanServiceProxy
         )
+
+        self.connected.set()
 
     @property
     def is_connected(self):
@@ -176,7 +178,8 @@ class BapConnector(Device.Listener):
             asyncio.TimeoutError: If the connection is not established within the given timeout.
         """
         try:
-            await asyncio.wait_for(self.stream_started.wait(), timeout)
+            print("waiting for connection")
+            await asyncio.wait_for(self.connected.wait(), timeout)
             logging.info("Streaming started")
         except asyncio.TimeoutError as error:
             raise asyncio.TimeoutError from error
