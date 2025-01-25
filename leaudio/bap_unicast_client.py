@@ -6,6 +6,9 @@ Created on 26. Dec. 2024
 @author: Markus Jellitsch
 """
 
+# -----------------------------------------------------------------------------
+# Imports
+# -----------------------------------------------------------------------------
 from bumble.profiles.bap import (
     AudioLocation,
     SamplingFrequency,
@@ -13,7 +16,6 @@ from bumble.profiles.bap import (
     CodecSpecificConfiguration,
 )
 from bumble.profiles.ascs import (
-    AudioStreamControlServiceProxy,
     ASE_Config_Codec,
     ASE_Config_QOS,
     ASE_Enable,
@@ -21,27 +23,22 @@ from bumble.profiles.ascs import (
 from bumble.hci import CodecID, CodingFormat
 from bumble.profiles.pacs import (
     PacRecord,
-    PublishedAudioCapabilitiesServiceProxy,
 )
 from bumble.utils import AsyncRunner
 from bumble.device import (
-    Device,
-    Peer,
-    ConnectionParametersPreferences,
     Connection,
 )
-from bumble.core import AdvertisingData
 import functools
-from bumble.profiles.ascs import AudioStreamControlServiceProxy
-from bumble.hci import HCI_IsoDataPacket, HCI_LE_1M_PHY, HCI_LE_2M_PHY
+from bumble.hci import HCI_IsoDataPacket
 import logging
 import asyncio
 from bumble import hci
 
-class BapUnicastClient(Device.Listener):
-    """BAP Unicast Client Class"""
+from leaudio.bap_connector import BapConnector
 
-    dflt_target_name = "BUMBLE SINK"
+
+class BapUnicastClient(BapConnector):
+    """BAP Unicast Client Class"""
 
     def __init__(self, device):
         """
@@ -51,23 +48,16 @@ class BapUnicastClient(Device.Listener):
             device: The device that this client is running on.
 
         Attributes:
-            target_name: The name of the target device to connect to.
             send_complete: Whether the ISO data has been fully sent.
             packet_sequence_number: The sequence number of the current ISO packet.
             iso_packets: The list of ISO packets to send.
             codec_config: The codec specific configuration.
         """
 
-        # additional device attributes
-        self.device = device
-        self.device.listener = self
-        self.device.cis_enabled = True
-
-        self.target_name = self.dflt_target_name
+        super().__init__(device)
         self.send_complete = asyncio.Event()
         self.stream_started = asyncio.Event()
         self.packet_sequence_number = 0
-        self.connection = None
         self.iso_packets = []
         self.codec_config = CodecSpecificConfiguration(
             sampling_frequency=SamplingFrequency.FREQ_24000,
@@ -77,56 +67,6 @@ class BapUnicastClient(Device.Listener):
             codec_frames_per_sdu=1,
         )
 
-
-    @AsyncRunner.run_in_task()
-    async def on_advertisement(self, advertisement):
-        # find the target device
-        """
-        This method is called when a BAP advertisement is received.
-
-        It checks if the advertisement is from the target device by comparing the
-        complete local name in the advertisement data with the target name. If the
-        names match, it stops scanning and establishes a connection to the target
-        device.
-
-        Args:
-            advertisement: The advertisement received.
-        """
-
-        def parse_ltv_packet(data):
-            packets = []
-
-            i = 0
-            while i < len(data) - 1:
-                length_byte = data[i]
-                type_byte = data[i + 1]
-                value_bytes = data[i + 2 : i + length_byte + 1]
-                packets.append((length_byte, type_byte, value_bytes))
-                i += length_byte + 1
-
-            return packets
-
-        ltv_packets = parse_ltv_packet(advertisement.data_bytes)
-        for _, type, values in ltv_packets:
-            if type is AdvertisingData.COMPLETE_LOCAL_NAME:
-                to_compare = bytes(self.target_name, "utf-8")
-
-                if values == to_compare:
-                    logging.info("found complete local name:" + self.target_name)
-
-                    await self.device.stop_scanning()
-                    params = ConnectionParametersPreferences()
-
-                    params.connection_interval_min = 47
-                    params.connection_interval_max = 47
-
-                    prefs = {HCI_LE_1M_PHY: params, HCI_LE_2M_PHY: params}
-
-                    await self.device.connect(
-                        peer_address=advertisement.address,
-                        connection_parameters_preferences=prefs,
-                    )
-
     @AsyncRunner.run_in_task()
     async def on_connection(self, connection: Connection):
         """
@@ -134,45 +74,23 @@ class BapUnicastClient(Device.Listener):
         :param connection: the established connection
         :return: nothing
         """
+        await super()._on_connection(connection)
 
         notifications = {1: asyncio.Queue()}
 
         def on_notification(data: bytes, ase_id: int):
             notifications[ase_id].put_nowait(data)
 
-        self.connection = connection
-        peer = Peer(connection)
-        logging.info(f"connection established => address: {connection.peer_address}")
-
-        await connection.pair()
-        logging.info("Link encrypted")
-
-        await connection.set_phy(rx_phys=[HCI_LE_2M_PHY], tx_phys=[HCI_LE_2M_PHY])
-        logging.info("PHY updated")
-
-        await peer.request_mtu(1691)
-        logging.info("MTU requested")
-
-        remote_features = await self.device.get_remote_le_features(connection)
-        logging.info(f"Remote features: {remote_features}")
-
-        pacs_client = await peer.discover_service_and_create_proxy(
-            PublishedAudioCapabilitiesServiceProxy
-        )
-        ascs_client = await peer.discover_service_and_create_proxy(
-            AudioStreamControlServiceProxy
-        )
-
-        response = await pacs_client.sink_pac.read_value()
+        response = await self.pacs_client.sink_pac.read_value()
         pac_record = PacRecord.from_bytes(response[1:])
         logging.info(f"Sink PAC: {pac_record.codec_specific_capabilities}")
 
-        await ascs_client.ase_control_point.subscribe()
-        await ascs_client.sink_ase[0].subscribe(
+        await self.ascs_client.ase_control_point.subscribe()
+        await self.ascs_client.sink_ase[0].subscribe(
             functools.partial(on_notification, ase_id=1)
         )
 
-        await ascs_client.ase_control_point.write_value(
+        await self.ascs_client.ase_control_point.write_value(
             ASE_Config_Codec(
                 ase_id=[1],
                 target_latency=[0x3],
@@ -200,7 +118,7 @@ class BapUnicastClient(Device.Listener):
         )
         logging.info(f"CIG Setuo =>CIS handles: {cis_handles}")
 
-        await ascs_client.ase_control_point.write_value(
+        await self.ascs_client.ase_control_point.write_value(
             ASE_Config_QOS(
                 ase_id=[1],
                 cig_id=[1],
@@ -218,7 +136,7 @@ class BapUnicastClient(Device.Listener):
         ase_state = await notifications[1].get()
         logging.info(f"QoS Configure =>ASE state: {ase_state}")
 
-        await ascs_client.ase_control_point.write_value(
+        await self.ascs_client.ase_control_point.write_value(
             ASE_Enable(
                 ase_id=[1],
                 metadata=[bytes([0x03, 0x02, 0x01, 0x00])],
@@ -261,7 +179,6 @@ class BapUnicastClient(Device.Listener):
 
         logging.info("Audio Setup complete. Sending ISO packets...")
 
-
     def on_iso_pdu_sent(self, event):
         """
         This method is called when an ISO PDU has been sent.
@@ -302,10 +219,8 @@ class BapUnicastClient(Device.Listener):
             target_name: The name of the target device to connect to.
             codec_config: The codec specific configuration.
         """
-        self.target_name = target_name
         self.codec_config = codec_config
-        await self.device.power_on()
-        await self.device.start_scanning()
+        await self.connect(target_name)
         logging.info(f"Start connecting to target device {target_name}")
 
     async def stop_streaming(self):
@@ -314,23 +229,22 @@ class BapUnicastClient(Device.Listener):
 
         This method stops the streaming by disconnecting the connection and powering off the device.
         """
-        if self.connection:
-            await self.connection.disconnect()
-            logging.info("Streaming stopped")
+
+        await self.disconnect()
+        logging.info("Streaming stopped")
         await self.device.power_off()
         logging.info("Power off device")
-        
-    
+
     async def wait_for_streaming(self, timeout: float):
         try:
             await asyncio.wait_for(self.stream_started.wait(), timeout)
             logging.info("Streaming started")
         except asyncio.TimeoutError as error:
             raise asyncio.TimeoutError from error
+
     async def wait_for_complete(self, timeout: float):
         try:
             await asyncio.wait_for(self.send_complete.wait(), timeout)
             logging.info("Streaming complete")
         except asyncio.TimeoutError as error:
             raise asyncio.TimeoutError from error
-
