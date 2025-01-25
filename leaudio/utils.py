@@ -31,7 +31,6 @@ def generate_sine_data(frequency, sampling_rate, duration):
     t = np.arange(0, duration, 1/sampling_rate)
 
     sine_wave = np.sin(2 * np.pi * frequency * t)
-    wav.write("sine.wav", sampling_rate, sine_wave.astype(np.int16))
 
     # Scale the sine wave to the 16-bit range (-32768 to 32767)
     scaled_sine_wave = sine_wave * 8191.5
