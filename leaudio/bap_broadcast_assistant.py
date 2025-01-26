@@ -3,7 +3,6 @@
 # -----------------------------------------------------------------------------
 import logging
 from bumble import core
-from bumble.utils import AsyncRunner
 from leaudio.bap_connector import BapConnector
 from bumble import hci
 from bumble.profiles import bass

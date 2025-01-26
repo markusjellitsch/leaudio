@@ -168,9 +168,8 @@ async def run_unicast(
 
             bap_client = BapUnicastClient(device=device)
             bap_client.set_iso_data(iso_packets)
-            await bap_client.connect(target_name)
-            await bap_client.wait_for_connection(12)
-            await bap_client.start_streaming_until(codec_config,15)
+            await bap_client.connect(target_name,timeout=12)
+            await bap_client.start_streaming(codec_config,timeout=15)
             await bap_client.wait_for_complete(100)
             logging.info("Streaming complete")
         except asyncio.TimeoutError:

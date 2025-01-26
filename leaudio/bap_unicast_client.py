@@ -67,7 +67,7 @@ class BapUnicastClient(BapConnector):
         )
 
 
-    async def start_streaming(self, codec_config):
+    async def _start_streaming(self, codec_config):
 
         """
         Start streaming ISO data to a unicast target.
@@ -232,9 +232,9 @@ class BapUnicastClient(BapConnector):
         await self.device.power_off()
         logging.info("Power off device")
 
-    async def start_streaming_until(self,codec_config, timeout: float):
+    async def start_streaming(self,codec_config, timeout=10):
         try:
-            await asyncio.wait_for(self.start_streaming(codec_config), timeout)
+            await asyncio.wait_for(self._start_streaming(codec_config), timeout)
             logging.info("Streaming started")
         except asyncio.TimeoutError as error:
             raise asyncio.TimeoutError from error

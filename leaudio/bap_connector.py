@@ -141,7 +141,7 @@ class BapConnector(Device.Listener):
     def is_connected(self):
         return self.peer is not None
 
-    async def connect(self, target_name):
+    async def connect(self, target_name,timeout=10):
         """
         Start scanning for a device with the given target_name.
 
@@ -152,8 +152,9 @@ class BapConnector(Device.Listener):
         self.target_name = target_name
         await self.device.power_on()
         await self.device.start_scanning()
+        await self._wait_for_connection(timeout)
 
-    async def wait_for_connection(self, timeout):
+    async def _wait_for_connection(self, timeout):
         """
         Wait for the connection to be established.
 
