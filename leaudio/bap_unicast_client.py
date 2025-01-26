@@ -56,7 +56,6 @@ class BapUnicastClient(BapConnector):
 
         super().__init__(device)
         self.send_complete = asyncio.Event()
-        self.stream_started = asyncio.Event()
         self.packet_sequence_number = 0
         self.iso_packets = []
         self.codec_config = CodecSpecificConfiguration(
@@ -67,15 +66,26 @@ class BapUnicastClient(BapConnector):
             codec_frames_per_sdu=1,
         )
 
-    @AsyncRunner.run_in_task()
-    async def on_connection(self, connection: Connection):
-        """
-        This method is called when a connection is established to the target device
-        :param connection: the established connection
-        :return: nothing
-        """
-        await super()._on_connection(connection)
 
+    async def start_streaming(self, codec_config):
+
+        """
+        Start streaming ISO data to a unicast target.
+
+        This method sets up and configures the unicast streaming session by
+        subscribing to notifications, configuring the codec, setting up the CIG
+        (Connected Isochronous Group), configuring QoS (Quality of Service), enabling
+        the ASE (Audio Stream Endpoint), and establishing the CIS (Connected
+        Isochronous Stream). It also configures the ISO data path and begins sending
+        ISO packets.
+
+        Args:
+            target_name: The name of the target device to stream audio to.
+            codec_config: The codec specific configuration used for the stream.
+
+        """
+
+        self.codec_config = codec_config
         notifications = {1: asyncio.Queue()}
 
         def on_notification(data: bytes, ase_id: int):
@@ -146,7 +156,7 @@ class BapUnicastClient(BapConnector):
         ase_state = await notifications[1].get()
         logging.info(f"Enable =>ASE state: {ase_state}")
 
-        await self.device.create_cis([(cis_handles[0], connection.handle)])
+        await self.device.create_cis([(cis_handles[0], self.peer.connection.handle)])
 
         await self.device.send_command(
             hci.HCI_LE_Setup_ISO_Data_Path_Command(
@@ -173,7 +183,6 @@ class BapUnicastClient(BapConnector):
             iso_sdu_fragment=bytes([0] * self.codec_config.octets_per_codec_frame),
         )
 
-        self.stream_started.set()
         self.device.host.on("packet_complete", self.on_iso_pdu_sent)
         self.device.host.send_hci_packet(self.iso_packet)
 
@@ -211,18 +220,6 @@ class BapUnicastClient(BapConnector):
 
         self.iso_packets = iso_packets
 
-    async def start_streaming(self, target_name, codec_config):
-        """
-        Start streaming the ISO data to the target device.
-
-        Args:
-            target_name: The name of the target device to connect to.
-            codec_config: The codec specific configuration.
-        """
-        self.codec_config = codec_config
-        await self.connect(target_name)
-        logging.info(f"Start connecting to target device {target_name}")
-
     async def stop_streaming(self):
         """
         Stop streaming the ISO data.
@@ -235,9 +232,9 @@ class BapUnicastClient(BapConnector):
         await self.device.power_off()
         logging.info("Power off device")
 
-    async def wait_for_streaming(self, timeout: float):
+    async def start_streaming_until(self,codec_config, timeout: float):
         try:
-            await asyncio.wait_for(self.stream_started.wait(), timeout)
+            await asyncio.wait_for(self.start_streaming(codec_config), timeout)
             logging.info("Streaming started")
         except asyncio.TimeoutError as error:
             raise asyncio.TimeoutError from error

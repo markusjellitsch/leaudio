@@ -32,7 +32,7 @@ import time
 from bumble import hci
 import sys
 
-from leaudio import generate_sine_data, read_wav_file
+from leaudio.utils import generate_sine_data, read_wav_file, get_octets_per_codec_frame
 
 
 DFLT_DEVICE_NAME = "Bumble Unicast Client"
@@ -108,7 +108,9 @@ async def run_unicast(
             sampling_frequency=sample_rate,
             frame_duration=FrameDuration.DURATION_10000_US,
             audio_channel_allocation=AudioLocation.FRONT_RIGHT,
-            octets_per_codec_frame=60,
+            octets_per_codec_frame=get_octets_per_codec_frame(
+                sample_rate, FrameDuration.DURATION_10000_US
+            ),
             codec_frames_per_sdu=1,
         )
 
@@ -166,8 +168,9 @@ async def run_unicast(
 
             bap_client = BapUnicastClient(device=device)
             bap_client.set_iso_data(iso_packets)
-            await bap_client.start_streaming(target_name, codec_config)
-            await bap_client.wait_for_streaming(15)
+            await bap_client.connect(target_name)
+            await bap_client.wait_for_connection(12)
+            await bap_client.start_streaming_until(codec_config,15)
             await bap_client.wait_for_complete(100)
             logging.info("Streaming complete")
         except asyncio.TimeoutError:

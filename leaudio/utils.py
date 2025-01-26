@@ -1,6 +1,10 @@
 from scipy import signal
 import scipy.io.wavfile as wav
 import numpy as np
+from bumble.profiles.bap import (
+    SamplingFrequency,
+    FrameDuration,
+)
 
 def read_wav_file(filename,target_sample_rate):
 
@@ -37,3 +41,18 @@ def generate_sine_data(frequency, sampling_rate, duration):
 
     # Convert to 16-bit integer format
     return scaled_sine_wave.astype(np.int16)
+
+def get_octets_per_codec_frame(sampling_frequency:SamplingFrequency, frame_duration:FrameDuration):
+    
+    if frame_duration == FrameDuration.DURATION_10000_US:
+        if sampling_frequency == SamplingFrequency.FREQ_16000:
+            return 40
+        elif sampling_frequency == SamplingFrequency.FREQ_24000:
+            return 60
+        elif sampling_frequency == SamplingFrequency.FREQ_48000:
+            return 120
+        else:
+            raise ValueError("Invalid sampling frequency")
+    else:
+        raise ValueError("Invalid frame duration")
+    

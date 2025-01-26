@@ -105,17 +105,6 @@ class BapConnector(Device.Listener):
         """
         This method is called when a connection is established to the target device.
 
-        It logs a message when the connection is established successfully.
-
-        Args:
-            connection: The established connection.
-        """
-        await self._on_connection(connection)
-
-    async def _on_connection(self, connection: Connection):
-        """
-        This method is called when a connection is established to the target device.
-
         It logs messages when the link is encrypted, the PHY is updated and the MTU is requested.
         It also creates clients for the Published Audio Capabilities Service, the
         Audio Stream Control Service and the Broadcast Audio Scan Service.
@@ -178,7 +167,6 @@ class BapConnector(Device.Listener):
             asyncio.TimeoutError: If the connection is not established within the given timeout.
         """
         try:
-            print("waiting for connection")
             await asyncio.wait_for(self.connected.wait(), timeout)
             logging.info("Streaming started")
         except asyncio.TimeoutError as error:
