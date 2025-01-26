@@ -24,12 +24,10 @@ from bumble.hci import CodecID, CodingFormat
 from bumble.profiles.pacs import (
     PacRecord,
 )
-from bumble.utils import AsyncRunner
-from bumble.device import (
-    Connection,
-)
+
 import functools
 from bumble.hci import HCI_IsoDataPacket
+from bumble.device import Device
 import logging
 import asyncio
 from bumble import hci
@@ -40,7 +38,7 @@ from leaudio.bap_connector import BapConnector
 class BapUnicastClient(BapConnector):
     """BAP Unicast Client Class"""
 
-    def __init__(self, device):
+    def __init__(self, device:Device):
         """
         Initialize the BAP Unicast Client.
 
@@ -58,6 +56,7 @@ class BapUnicastClient(BapConnector):
         self.send_complete = asyncio.Event()
         self.packet_sequence_number = 0
         self.iso_packets = []
+        self.iso_link = None
         self.codec_config = CodecSpecificConfiguration(
             sampling_frequency=SamplingFrequency.FREQ_24000,
             frame_duration=FrameDuration.DURATION_10000_US,
@@ -156,35 +155,23 @@ class BapUnicastClient(BapConnector):
         ase_state = await notifications[1].get()
         logging.info(f"Enable =>ASE state: {ase_state}")
 
-        await self.device.create_cis([(cis_handles[0], self.peer.connection.handle)])
-
-        await self.device.send_command(
-            hci.HCI_LE_Setup_ISO_Data_Path_Command(
-                connection_handle=cis_handles[0],
-                data_path_direction=hci.HCI_LE_Setup_ISO_Data_Path_Command.Direction.HOST_TO_CONTROLLER,
+        iso_links = await self.device.create_cis([(cis_handles[0], self.peer.connection.handle)])
+        self.iso_link = iso_links[0]
+        await self.iso_link.setup_data_path(
+                direction=hci.HCI_LE_Setup_ISO_Data_Path_Command.Direction.HOST_TO_CONTROLLER,
                 data_path_id=0x00,  # Fixed HCI
                 codec_id=hci.CodingFormat(hci.CodecID.TRANSPARENT),
                 controller_delay=0,
                 codec_configuration=b"",
-            )
         )
 
         ase_state = await notifications[1].get()
         logging.info(f"Enabled =>ASE state: {ase_state}")
 
-        self.packet_sequence_number = 0
-        self.iso_packet = HCI_IsoDataPacket(
-            connection_handle=cis_handles[0],
-            data_total_length=self.codec_config.octets_per_codec_frame + 4,
-            packet_sequence_number=self.packet_sequence_number,
-            pb_flag=0b10,
-            packet_status_flag=0,
-            iso_sdu_length=self.codec_config.octets_per_codec_frame,
-            iso_sdu_fragment=bytes([0] * self.codec_config.octets_per_codec_frame),
-        )
-
+       
         self.device.host.on("packet_complete", self.on_iso_pdu_sent)
-        self.device.host.send_hci_packet(self.iso_packet)
+        self.packet_sequence_number = 0
+        self.iso_link.write(self.iso_packets[self.packet_sequence_number])
 
         logging.info("Audio Setup complete. Sending ISO packets...")
 
@@ -202,11 +189,7 @@ class BapUnicastClient(BapConnector):
         if self.packet_sequence_number < len(self.iso_packets) - 1:
             # send the next ISO packet
             self.packet_sequence_number += 1
-            self.iso_packet.packet_sequence_number = self.packet_sequence_number
-            self.iso_packet.iso_sdu_fragment = self.iso_packets[
-                self.packet_sequence_number
-            ]
-            self.device.host.send_hci_packet(self.iso_packet)
+            self.iso_link.write(self.iso_packets[self.packet_sequence_number])
         else:
             self.send_complete.set()
 
