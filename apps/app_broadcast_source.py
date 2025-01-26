@@ -70,6 +70,7 @@ async def run_broadcast(
     port: str,
     broadcast_id: int,
     broadcast_code: str | None,
+    broadcast_name: str,
     wav: str | None,
     sample_rate: int,
     sine_frequency: int,
@@ -130,8 +131,10 @@ async def run_broadcast(
             iso_packets.append(data)
 
         try:
-            print("Starting broadcast source")
             logging.info(f"Use Serial Port: {port}")
+            logging.info(f"Use Broadcast ID: {broadcast_id}")
+            logging.info(f"Use Broadcast Code: {broadcast_code}")
+            logging.info(f"Use Broadcast Name: {broadcast_name}")
             logging.info(f"Use Frame Duration: {codec_config.frame_duration.us} us")
             logging.info(
                 f"Use Octets per Codec Frame: {codec_config.octets_per_codec_frame} bytes"
@@ -151,7 +154,7 @@ async def run_broadcast(
             broacast_source = BapBroadcastSource(device=device)
             broacast_source.set_iso_data(iso_packets)
             await broacast_source.start_streaming(
-                broadcast_id, broadcast_code, codec_config, repeat
+                broadcast_id, broadcast_code, broadcast_name,codec_config, repeat
             )
             await broacast_source.wait_for_streaming(10)
             if not repeat:
@@ -216,6 +219,13 @@ def run_async(async_command: Coroutine) -> None:
     help="Broadcast encryption code in hex format",
 )
 @click.option(
+    "--broadcast-name",
+    metavar="BROADCAST_NAME",
+    type=str,
+    default="Bumble Broadcast",
+    help="Broadcast name",
+)
+@click.option(
     "--sample-rate",
     metavar="SAMPLE_RATE",
     type=click.Choice(
@@ -261,6 +271,7 @@ def main(
     port,
     broadcast_id,
     broadcast_code,
+    broadcast_name,
     wav,
     sample_rate,
     sine_frequency,
@@ -275,6 +286,7 @@ def main(
             port=port,
             broadcast_id=broadcast_id,
             broadcast_code=broadcast_code,
+            broadcast_name=broadcast_name,
             wav=wav,
             sample_rate=bap.SamplingFrequency(int(sample_rate)),
             sine_frequency=sine_frequency,

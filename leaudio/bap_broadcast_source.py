@@ -84,7 +84,7 @@ class BapBroadcastSource:
         self.iso_packets = iso_packets
 
     async def start_streaming(
-        self, broadcast_id: int, broadcast_code, codec_config, repeat
+        self, broadcast_id: int, broadcast_code,broadcast_name, codec_config, repeat
     ):
         """
         Start streaming the ISO data as a broadcast source.
@@ -148,7 +148,7 @@ class BapBroadcastSource:
                 broadcast_audio_announcement.get_advertising_data()
                 + bytes(
                     core.AdvertisingData(
-                        [(core.AdvertisingData.BROADCAST_NAME, b"Bumble Auracast")]
+                        [(core.AdvertisingData.BROADCAST_NAME, bytearray(broadcast_name,"utf-8"))]
                     )
                 )
             ),
