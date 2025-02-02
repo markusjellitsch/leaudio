@@ -9,6 +9,7 @@ Created on 26. Dec. 2024
 # -----------------------------------------------------------------------------
 # Imports
 # -----------------------------------------------------------------------------
+import sys
 from bumble.profiles.ascs import (
     AudioStreamControlServiceProxy,
 )
@@ -118,8 +119,11 @@ class BapConnector(Device.Listener):
         await connection.pair()
         logging.info("Link encrypted")
 
-        await connection.set_phy(rx_phys=[HCI_LE_2M_PHY], tx_phys=[HCI_LE_2M_PHY])
-        logging.info("PHY updated")
+        if sys.version_info >= (3, 11):
+            await connection.set_phy(rx_phys=[HCI_LE_2M_PHY], tx_phys=[HCI_LE_2M_PHY])
+            logging.info("PHY updated")
+        else:
+            logging.info("PHY update not updated")
 
         await self.peer.request_mtu(self.dflt_mtu_size)
         logging.info("MTU requested")
