@@ -4,7 +4,9 @@ import numpy as np
 from bumble.profiles.bap import (
     SamplingFrequency,
     FrameDuration,
+    CodecSpecificConfiguration
 )
+from leaudio import LeAudioEncoder
 
 def read_wav_file(filename,target_sample_rate):
 
@@ -41,6 +43,36 @@ def generate_sine_data(frequency, sampling_rate, duration):
 
     # Convert to 16-bit integer format
     return scaled_sine_wave.astype(np.int16)
+
+def generate_iso_data(raw_data, codec_config:CodecSpecificConfiguration):
+
+
+    frame_size = int(
+        codec_config.sampling_frequency.hz
+        * codec_config.frame_duration.us
+        / 1000
+        / 1000
+    )
+
+        
+    frame_num = int(len(raw_data) // frame_size)
+            
+    encoder = LeAudioEncoder()
+    encoder.setup_encoders(
+        codec_config.sampling_frequency.hz,
+        codec_config.frame_duration.us,
+        1,
+    )
+
+    iso_packets = []
+    for i in range(frame_num):
+        pcm_data = raw_data[i * frame_size : i * frame_size + frame_size]
+        data = encoder.encode(
+            codec_config.octets_per_codec_frame, 1, 1, bytes(pcm_data)
+        )
+        iso_packets.append(data)
+    return iso_packets
+
 
 def get_octets_per_codec_frame(sampling_frequency:SamplingFrequency, frame_duration:FrameDuration):
     
